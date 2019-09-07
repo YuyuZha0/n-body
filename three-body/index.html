@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta content="*" http-equiv="Access-Control-Allow-Origin"/>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>Three Body System</title>
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/ion-rangeslider/2.3.0/css/ion.rangeSlider.min.css"/>
+    <link href="https://cdn.bootcss.com/twitter-bootstrap/4.3.1/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: "Comic Sans MS", "Courier New", "Arial", "Helvetica", sans-serif;
+        }
+    </style>
+</head>
+<body>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-8 mt-2">
+            <div id="three-body-animation" class=""></div>
+        </div>
+        <div class="col-md-4 m-auto">
+            <form class="form">
+                <div class="form-group">
+                    <table class="table" id="body-param-table">
+                        <thead>
+                        <tr>
+                            <th scope="col">#</th>
+                            <th scope="col" style="color:#00b8a9;">Body1</th>
+                            <th scope="col" style="color:#f57170;">Body2</th>
+                            <th scope="col" style="color:#00e0ff;">Body3</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr>
+                            <th scope="row">Mass</th>
+                            <td contenteditable="true">80</td>
+                            <td contenteditable="true">80</td>
+                            <td contenteditable="true">80</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">Radius</th>
+                            <td contenteditable="true">7</td>
+                            <td contenteditable="true">7</td>
+                            <td contenteditable="true">7</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">Angle</th>
+                            <td contenteditable="true">0</td>
+                            <td contenteditable="true">120</td>
+                            <td contenteditable="true">240</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">RadiusSpeed</th>
+                            <td contenteditable="true">0</td>
+                            <td contenteditable="true">0</td>
+                            <td contenteditable="true">0</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">AngleSpeed</th>
+                            <td contenteditable="true">15</td>
+                            <td contenteditable="true">15</td>
+                            <td contenteditable="true">15</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="form-group row">
+                    <label for="time-delta-input" class="col-md-4">Time delta:</label>
+                    <div class="col-md-8"><input type="text" id="time-delta-input"></div>
+                </div>
+                <div class="form-group row">
+                    <label for="max-trace-keep-input" class="col-md-4">Max trace keep:</label>
+                    <div class="col-md-8"><input type="text" id="max-trace-keep-input"></div>
+                </div>
+                <button type="button" class="btn btn-info" id="start-simulation-btn">Start</button>
+                <button type="button" class="btn btn-warning" id="stop-simulation-btn">Stop</button>
+            </form>
+        </div>
+    </div>
+</div>
+<script src="https://cdn.bootcss.com/echarts/4.2.1/echarts.min.js"></script>
+<script src="https://cdn.bootcss.com/jquery/3.3.1/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ion-rangeslider/2.3.0/js/ion.rangeSlider.min.js"></script>
+<script src="https://cdn.bootcss.com/twitter-bootstrap/4.3.1/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="odex.bundle.js"></script>
+<script type="text/javascript">
+    $.getScript('three-body.js').done(function () {
+        const skin = 'round';
+
+        let animationId;
+        const stopAnimation = function () {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+        };
+
+
+        const $timeDeltaInput = $('#time-delta-input');
+        $timeDeltaInput.ionRangeSlider({
+            min: 0.001,
+            max: 0.1,
+            from: 0.005,
+            step: 0.001,
+            skin: skin,
+            onChange: stopAnimation
+        });
+
+        const $maxTraceKeepInput = $('#max-trace-keep-input');
+        $maxTraceKeepInput.ionRangeSlider({
+            min: 500,
+            max: 5000,
+            from: 1500,
+            step: 100,
+            skin: skin,
+            onChange: stopAnimation
+        });
+
+        const readSimulateOptions = function () {
+            const a = [];
+
+            $('#body-param-table').find('td[contenteditable=true]').each(function () {
+                const x = parseFloat($(this).text());
+                if (Number.isFinite(x)) {
+                    a.push(x);
+                } else {
+                    $(this.focus());
+                }
+            });
+            if (a.length === 15) {
+                const bodies = [];
+                for (let i = 0; i < 3; i++) {
+                    bodies.push({
+                        mass: a[i],
+                        radius: a[i + 3],
+                        angle: a[i + 6] / 180 * Math.PI,
+                        radiusSpeed: a[i + 9],
+                        angleSpeed: a[i + 12] / 180 * Math.PI
+                    })
+                }
+                return {
+                    bodies: bodies,
+                    timeDelta: parseFloat($timeDeltaInput.val()),
+                    maxTraceKeep: parseInt($maxTraceKeepInput.val())
+                }
+            }
+            return null;
+        };
+
+
+        $(document).ready(function () {
+            const startBtn = $('#start-simulation-btn');
+            startBtn.on('click', function () {
+                const options = readSimulateOptions();
+                if (!options)
+                    return;
+                stopAnimation();
+                const simulator = threeBodySimulator(options,
+                    function (vectors, traces) {
+                        stopAnimation();
+                        updateThreeBodyFrame(vectors, traces);
+                        animationId = requestAnimationFrame(simulator);
+                    });
+
+                simulator();
+            });
+
+            $('#stop-simulation-btn').on('click', stopAnimation);
+
+            $('#body-param-table').on('input', 'td[contenteditable=true]', function () {
+                const options = readSimulateOptions();
+                if (!options)
+                    return;
+                stopAnimation();
+                const vectors = readBodyParam(options.bodies);
+                animationId = requestAnimationFrame(function () {
+                    updateThreeBodyFrame(vectors, []);
+                });
+            });
+
+            startBtn.trigger('click');
+        });
+    });
+</script>
+</body>
+</html>
