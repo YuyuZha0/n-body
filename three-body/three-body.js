@@ -43,12 +43,18 @@
             return this.a[0] * v.a[0] + this.a[1] * v.a[1];
         }
 
-        cos(v) {
-            return this.dot(v) / (v.a[2] * this.a[2]);
+        gravity(m) {
+            const l = this.a[2];
+            const k = m / (l * l * l);
+            const a = new Float64Array(3);
+            a[0] = this.a[0] * k;
+            a[1] = this.a[1] * k;
+            a[2] = this.a[2] * k;
+            return new Vector2D(a);
         }
 
-        inv() {
-            return 1.0 / (this.a[2] * this.a[2]);
+        projectOn(v) {
+            return this.dot(v) / v.len();
         }
 
         toString() {
@@ -59,9 +65,6 @@
 
     const threeBodySystem = function (m1, m2, m3) {
         const PI_2 = Math.PI / 2;
-        const calcForce = function (r1, r12) {
-            return r12.inv() * r12.cos(r1);
-        };
         return function (t, u) {
             const r1 = Vector2D.fromPolar(u[0], u[1]),
                 r2 = Vector2D.fromPolar(u[4], u[5]),
@@ -70,27 +73,21 @@
                 a2 = Vector2D.fromPolar(1, u[5] + PI_2),
                 a3 = Vector2D.fromPolar(1, u[9] + PI_2);
             const r12 = r1.sub(r2), r23 = r2.sub(r3), r31 = r3.sub(r1);
-            const
-                Fr1 = m2 * calcForce(r1, r12) - m3 * calcForce(r1, r31),
-                Fr2 = m3 * calcForce(r2, r23) - m1 * calcForce(r2, r12),
-                Fr3 = m1 * calcForce(r3, r31) - m2 * calcForce(r3, r23);
-            const
-                Fa1 = m2 * calcForce(a1, r12) - m3 * calcForce(a1, r31),
-                Fa2 = m3 * calcForce(a2, r23) - m1 * calcForce(a2, r12),
-                Fa3 = m1 * calcForce(a3, r31) - m2 * calcForce(a3, r23);
+            const F12 = r12.gravity(m1 * m2), F23 = r23.gravity(m2 * m3), F31 = r31.gravity(m3 * m1);
+            const F1 = F31.sub(F12), F2 = F12.sub(F23), F3 = F23.sub(F31);
             const v = new Array(ODE_DIM);
             v[0] = u[2];
             v[1] = u[3];
-            v[2] = u[0] * u[3] * u[3] - Fr1;
-            v[3] = -(2 * u[2] * u[3] + Fa1) / u[0];
+            v[2] = u[0] * u[3] * u[3] + F1.projectOn(r1) / m1;
+            v[3] = -(2 * u[2] * u[3] - F1.projectOn(a1) / m1) / u[0];
             v[4] = u[6];
             v[5] = u[7];
-            v[6] = u[4] * u[7] * u[7] - Fr2;
-            v[7] = -(2 * u[6] * u[7] + Fa2) / u[4];
+            v[6] = u[4] * u[7] * u[7] + F2.projectOn(r2) / m2;
+            v[7] = -(2 * u[6] * u[7] - F2.projectOn(a2) / m2) / u[4];
             v[8] = u[10];
             v[9] = u[11];
-            v[10] = u[8] * u[11] * u[11] - Fr3;
-            v[11] = -(2 * u[10] * u[11] + Fa3) / u[8];
+            v[10] = u[8] * u[11] * u[11] + F3.projectOn(r3) / m3;
+            v[11] = -(2 * u[10] * u[11] - F3.projectOn(a3) / m3) / u[8];
             return v;
         };
     };
